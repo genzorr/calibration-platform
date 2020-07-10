@@ -10,18 +10,6 @@
 #define LSM_TIMEOUT	1000
 #define MDPS_TO_RAD	M_PI / 180 / 1000
 
-//	Magnetometer bias & transform matrix
-#define X_MAGN_OFFSET		-292.920973
-#define Y_MAGN_OFFSET		 224.742275
-#define Z_MAGN_OFFSET		-130.841676
-#define XX_MAGN_TRANSFORM_MATIX	 0.002098
-#define YY_MAGN_TRANSFORM_MATIX	 0.002186
-#define ZZ_MAGN_TRANSFORM_MATIX	 0.002267
-#define XY_MAGN_TRANSFORM_MATIX	 0.000118
-#define XZ_MAGN_TRANSFORM_MATIX	-0.000354
-#define YZ_MAGN_TRANSFORM_MATIX	 0.000003
-
-
 static uint8_t whoamI, rst;
 
 I2C_HandleTypeDef*	i2c_lsm303c;

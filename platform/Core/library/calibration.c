@@ -7,10 +7,16 @@
 #include "lsm303c_tools.h"
 #include "MPU9255.h"
 
+#define MOTOR_PORT			GPIOA
+#define MOTOR_FORWARD_PIN	GPIO_PIN_3
+#define MOTOR_REVERSE_PIN	GPIO_PIN_2
+int MOTOR_360 = 16000;
+int MOTOR_STEPS = 40;
+
 int PWM_MAX = 220;
 int PWM_MIN = 40;
 int PWM_STEPS = 12;
-int STOP_TIME = 3000;
+int STOP_TIME = 700;
 
 void SetPWMValue(TIM_HandleTypeDef *htim, uint16_t value)
 {
@@ -24,8 +30,29 @@ void SetPWMValue(TIM_HandleTypeDef *htim, uint16_t value)
     HAL_TIM_PWM_Start(htim, TIM_CHANNEL_1);
 }
 
+void RotateMotor(int forward, int time)
+{
+	if (forward == 1)
+	{
+		HAL_GPIO_WritePin(MOTOR_PORT, MOTOR_REVERSE_PIN, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(MOTOR_PORT, MOTOR_FORWARD_PIN, GPIO_PIN_SET);
+		HAL_Delay(time);
+		HAL_GPIO_WritePin(MOTOR_PORT, MOTOR_FORWARD_PIN, GPIO_PIN_RESET);
+	}
+	else
+	{
+		HAL_GPIO_WritePin(MOTOR_PORT, MOTOR_FORWARD_PIN, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(MOTOR_PORT, MOTOR_REVERSE_PIN, GPIO_PIN_SET);
+		HAL_Delay(time);
+		HAL_GPIO_WritePin(MOTOR_PORT, MOTOR_REVERSE_PIN, GPIO_PIN_RESET);
+	}
+}
+
 void IMU_Init(I2C_HandleTypeDef *hi2c)
 {
+	HAL_GPIO_WritePin(MOTOR_PORT, MOTOR_FORWARD_PIN, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(MOTOR_PORT, MOTOR_REVERSE_PIN, GPIO_PIN_RESET);
+
 	if(MPU9255)
 	{
 		//	MPU9255 init
@@ -154,13 +181,14 @@ void Calibration_PerformCycle(UART_HandleTypeDef *huart, TIM_HandleTypeDef *htim
 {
 	int value = PWM_MIN;
 	int PWM_STEP = (PWM_MAX - PWM_MIN) / PWM_STEPS;
+	int MOTOR_TIME = MOTOR_360 / MOTOR_STEPS;
 
-	for (int i = 0; i < PWM_STEPS + 1; i++)
+	for (int i = 0; i < PWM_STEPS + 2; i++)
 	{
 		SetPWMValue(htim, value);
 
 		value = value + PWM_STEP;
-		if (value > PWM_MAX) value = PWM_MIN;
+		if (value > PWM_MAX+1) value = PWM_MIN;
 
 		HAL_Delay(STOP_TIME);
 		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
@@ -168,5 +196,16 @@ void Calibration_PerformCycle(UART_HandleTypeDef *huart, TIM_HandleTypeDef *htim
 		CalibrationData_ObtainPoint();
 		CalibrationData_Send(huart);
 	}
+	RotateMotor(1, MOTOR_TIME);
+}
+
+void Calibration(UART_HandleTypeDef *huart, TIM_HandleTypeDef *htim)
+{
+	for (int i = 0; i < MOTOR_STEPS; i++)
+	{
+		Calibration_PerformCycle(huart, htim);
+	 	HAL_Delay(500);
+	}
+	RotateMotor(-1, MOTOR_360);
 }
 
