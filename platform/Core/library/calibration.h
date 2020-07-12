@@ -15,8 +15,9 @@ typedef struct
 
 }__attribute__((packed, aligned(1))) state_msg_t;
 
-//void RotateMotor(int forward, int time);
-//void IMU_Init(I2C_HandleTypeDef *hi2c);
+void SetPWMValue(TIM_HandleTypeDef *htim, uint16_t value);
+void RotateMotor(int forward, int time);
+void IMU_Init(I2C_HandleTypeDef *hi2c);
 //uint8_t CalibrationData_Send(UART_HandleTypeDef *huart);
 //int CalibrationData_ObtainPoint(void);
 //void Calibration_PerformCycle(UART_HandleTypeDef *huart, TIM_HandleTypeDef *htim);

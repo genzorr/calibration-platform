@@ -10,8 +10,8 @@
 #include "lis3mdl_reg.h"
 
 #define MPU9255			0
-#define LSM6DS3			1
-#define LSM303C			0
+#define LSM6DS3			0
+#define LSM303C			1
 
 // if error set value and go to end
 #define PROCESS_ERROR(x) if (0 != (error = (x))) { goto end; }

@@ -9,34 +9,39 @@ GYRO_PATH = 'results/gyro.txt'
 MAGN_PATH = 'results/magn.txt'
 
 accel_calibration = 0
-gyro_calibration = 0
-magn_calibration = 0
-
+accel_fieldSize = 10
+magn_calibration = 1
+magn_fieldSize = 400
 
 class CalibrationGlobe(gl.GLViewWidget):
     def __init__(self, *args, **kwargs):
         super(CalibrationGlobe, self).__init__(*args, **kwargs)
-        self.setCameraPosition(distance=30)
+
+        self.axisSize = accel_fieldSize
+        if (magn_calibration):
+            self.axisSize = magn_fieldSize
+
         g = gl.GLGridItem()
+        g.setSize(2*self.axisSize, 2*self.axisSize, 2*self.axisSize)
         self.addItem(g)
 
         self.data3d = np.array([[0,0,0]])
-        self.view3d = gl.GLScatterPlotItem(pos=self.data3d, color=[1,0,0,1], size=0.5, pxMode=False)
+        self.view3d = gl.GLScatterPlotItem(pos=self.data3d, color=[1,0,0,1], size=self.axisSize/20, pxMode=False)
         self.addItem(self.view3d)
 
         self.data3d = np.delete(self.data3d, 0, axis=0)
         print(self.data3d)
 
         isc_coord = gl.GLAxisItem()
-        isc_coord.setSize(10, 10, 10)
-        # isc_coord.translate(0, 0, 0)
+        isc_coord.setSize(self.axisSize, self.axisSize, self.axisSize)
         self.addItem(isc_coord)
+        self.setCameraPosition(distance=self.axisSize*3)
 
     def updateView(self, data):
         if (data == [0,0,0]):
             pass
         self.data3d = np.concatenate((self.data3d, [data]))
-        self.view3d.setData(pos=self.data3d, color=[1,0,0,1], size=0.5, pxMode=False)
+        self.view3d.setData(pos=self.data3d, color=[1,0,0,1], size=self.axisSize/20, pxMode=False)
         pass
 
 
@@ -167,7 +172,7 @@ class MyWin(QtWidgets.QMainWindow):
             self.magn_z_graph.setData(x=self.time, y=self.magn_z, pen=('b'), width=0.5)
 
             # Update scatter plot.
-            self.globe.updateView(msgs[i].accel)
+            self.globe.updateView(msgs[i].magn)
 
             if len(self.time) > self.length:
                 self.time = self.time[self.cut:(self.length - 1)]

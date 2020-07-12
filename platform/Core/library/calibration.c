@@ -10,24 +10,56 @@
 #define MOTOR_PORT			GPIOA
 #define MOTOR_FORWARD_PIN	GPIO_PIN_3
 #define MOTOR_REVERSE_PIN	GPIO_PIN_2
-int MOTOR_360 = 16000;
-int MOTOR_STEPS = 40;
 
-int PWM_MAX = 220;
-int PWM_MIN = 40;
+int MOTOR_360 = 4000;
+
+#if (LSM6DS3)
+int MOTOR_STEPS = 60;
+#elif (LSM303C)
+int MOTOR_STEPS = 100;
+#else
+int STOP_TIME = 60;
+#endif
+
+int PWM_MAX = 270;
+int PWM_MIN = 30;
 int PWM_STEPS = 12;
-int STOP_TIME = 700;
+
+#if (LSM6DS3)
+int STOP_TIME = 400;
+#elif (LSM303C)
+int STOP_TIME = 0;
+#else
+int STOP_TIME = 400;
+#endif
+
+#if (LSM6DS3)
+int MEAS_TIME = 20;
+#elif (LSM303C)
+int MEAS_TIME = 5;
+#else
+int MEAS_TIME = 20;
+#endif
+
+#if (LSM6DS3)
+int INIT_TIME = 1000;
+#elif (LSM303C)
+int INIT_TIME = 150;
+#else
+int INIT_TIME = 1000;
+#endif
 
 void SetPWMValue(TIM_HandleTypeDef *htim, uint16_t value)
 {
-    TIM_OC_InitTypeDef sConfigOC;
+//    TIM_OC_InitTypeDef sConfigOC;
+//    sConfigOC.OCMode = TIM_OCMODE_PWM1;
+//    sConfigOC.Pulse = value;
+//    sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+//    sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+//    HAL_TIM_PWM_ConfigChannel(htim, &sConfigOC, TIM_CHANNEL_1);
+//    HAL_TIM_PWM_Start(htim, TIM_CHANNEL_1);
 
-    sConfigOC.OCMode = TIM_OCMODE_PWM1;
-    sConfigOC.Pulse = value;
-    sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-    sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-    HAL_TIM_PWM_ConfigChannel(htim, &sConfigOC, TIM_CHANNEL_1);
-    HAL_TIM_PWM_Start(htim, TIM_CHANNEL_1);
+	__HAL_TIM_SET_COMPARE(htim, TIM_CHANNEL_1, value);
 }
 
 void RotateMotor(int forward, int time)
@@ -112,7 +144,6 @@ uint8_t CalibrationData_Send(UART_HandleTypeDef *huart)
 	return error;
 }
 
-
 int CalibrationData_ObtainPoint(void)
 {
 	int error = 0;
@@ -126,43 +157,37 @@ int CalibrationData_ObtainPoint(void)
 	/////////////////	GET IMU DATA  //////////////////
 	////////////////////////////////////////////////////
 
-	if (MPU9255)
+#if (MPU9255)
+	int16_t accelData[3] = {0, 0, 0};
+	int16_t gyroData[3] = {0, 0, 0};
+	int16_t magnData[3] = {0, 0, 0};
+
+	PROCESS_ERROR(mpu9255_readIMU(accelData, gyroData));
+	PROCESS_ERROR(mpu9255_readCompass(magnData));
+
+	//	Recalc data to floats
+	mpu9255_recalcAccel(accelData, accel);
+	mpu9255_recalcGyro(gyroData, gyro);
+	mpu9255_recalcMagn(magnData, magn);
+
+#elif (LSM6DS3)
+	error = lsm6ds3_get_xl_data_g(accel);
+	error |= lsm6ds3_get_g_data_rps(gyro);
+	if (error)
 	{
-		int16_t accelData[3] = {0, 0, 0};
-		int16_t gyroData[3] = {0, 0, 0};
-		int16_t magnData[3] = {0, 0, 0};
-
-		PROCESS_ERROR(mpu9255_readIMU(accelData, gyroData));
-		PROCESS_ERROR(mpu9255_readCompass(magnData));
-
-		//	Recalc data to floats
-		mpu9255_recalcAccel(accelData, accel);
-		mpu9255_recalcGyro(gyroData, gyro);
-		mpu9255_recalcMagn(magnData, magn);
+		state_system.MPU_state = error;
+		goto end;
 	}
-	else
+
+#elif (LSM303C)
+	error = lsm303c_get_m_data_mG(magn);
+	if (error)
 	{
-		if (LSM6DS3)
-		{
-			error = lsm6ds3_get_xl_data_g(accel);
-			error |= lsm6ds3_get_g_data_rps(gyro);
-			if (error)
-			{
-				state_system.MPU_state = error;
-				goto end;
-			}
-		}
-
-		if (LSM303C)
-		{
-			error = lsm303c_get_m_data_mG(magn);
-			if (error)
-			{
-				state_system.NRF_state = error;
-				goto end;
-			}
-		}
+		state_system.NRF_state = error;
+		goto end;
 	}
+#endif
+
 	float _time = (float)HAL_GetTick() / 1000;
 	state_system.time = _time;
 	//	пересчитываем их и записываем в структуры
@@ -183,12 +208,23 @@ void Calibration_PerformCycle(UART_HandleTypeDef *huart, TIM_HandleTypeDef *htim
 	int PWM_STEP = (PWM_MAX - PWM_MIN) / PWM_STEPS;
 	int MOTOR_TIME = MOTOR_360 / MOTOR_STEPS;
 
-	for (int i = 0; i < PWM_STEPS + 2; i++)
-	{
-		SetPWMValue(htim, value);
+	SetPWMValue(htim, value);
 
-		value = value + PWM_STEP;
-		if (value > PWM_MAX+1) value = PWM_MIN;
+	HAL_Delay(INIT_TIME);
+
+	CalibrationData_ObtainPoint();
+	CalibrationData_Send(huart);
+
+	for (int i = 1; i < PWM_STEPS + 1; i++)
+	{
+		for (int k = value; k < value + PWM_STEP + 1; k++)
+		{
+			SetPWMValue(htim, k);
+			HAL_Delay(MEAS_TIME);
+		}
+
+		value += PWM_STEP;
+		if (value > PWM_MAX) value = PWM_MIN;
 
 		HAL_Delay(STOP_TIME);
 		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
@@ -196,16 +232,15 @@ void Calibration_PerformCycle(UART_HandleTypeDef *huart, TIM_HandleTypeDef *htim
 		CalibrationData_ObtainPoint();
 		CalibrationData_Send(huart);
 	}
+
 	RotateMotor(1, MOTOR_TIME);
 }
 
 void Calibration(UART_HandleTypeDef *huart, TIM_HandleTypeDef *htim)
 {
 	for (int i = 0; i < MOTOR_STEPS; i++)
-	{
 		Calibration_PerformCycle(huart, htim);
-	 	HAL_Delay(500);
-	}
+
 	RotateMotor(-1, MOTOR_360);
 }
 
